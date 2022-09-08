@@ -59,8 +59,8 @@ def api_call(method, request):
     request['apikey'] = config.get('api', 'key')
     request_string = json.dumps(request)
 
-    secret_bytes = bytes(str(config.get('api', 'secret')), 'latin-1')
-    request_bytes = bytes(request_string, 'latin-1')
+    secret_bytes = bytes(str(config.get('api', 'secret')), 'utf-8')
+    request_bytes = bytes(request_string, 'utf-8')
 
     hmac_generator = hmac.new(secret_bytes, request_bytes, hashlib.sha256)
     hmac2 = hmac_generator.hexdigest()
