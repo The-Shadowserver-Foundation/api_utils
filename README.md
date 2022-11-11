@@ -21,7 +21,7 @@ freed0@pit:~$ ./call-api.py reports/query '{"report":"united-states", "date":"20
 API Exception: The read operation timed out
 ```
 
-Additional details can be found at https://www.shadowserver.org/what-we-do/network-reporting/api-documentation/.
+Additional details can be found at https://github.com/The-Shadowserver-Foundation/api_utils/wiki.
 
 ## report-manager
 
