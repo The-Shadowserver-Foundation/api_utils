@@ -3,9 +3,18 @@
 
 This is a Splunk Modular Input Add-On for indexing Shadowserver intelligence reports.
 
-## Sample Configuration
+## Install
 
-This section provides an example configuration of the Add-On using Slack Enterprise 9.1.1.
+From the _Apps_ menu, select _Manage Apps_.
+
+Click the _Install app from file_ button.
+
+Click the _Browse..._ button and select the `shadowserver_reports.spl` file.
+
+Click _Upload_.
+
+
+## Add Instance
 
 From the _Settings_ menu, select **Data**|Data inputs.
 
