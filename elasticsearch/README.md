@@ -34,6 +34,19 @@ types=device_id
 log=/var/lib/ecs/filebeat
 ```
 
+The _general_ section contains settings common to all download groups.
+
+* state_directory : path used to store report and mapping details
+* apikey : your Shadowserver API key
+* secret : your Shadowserver API secret
+* auto_update : optional boolean flag to download the latest mapping at startup
+
+Each additional section defines one or more report directives.
+
+* types : optional list of report types to download
+* reports : optional list of mailing list names to query
+* log : path filebeat will read files from
+
 ### Example filebeat.yml
 
 ```
