@@ -43,8 +43,8 @@ The _general_ section contains settings common to all download groups.
 
 Each additional section defines one or more report directives.
 
-* types : optional list of report types to download
-* reports : optional list of mailing list names to query
+* types : optional comma separated list of report types to download
+* reports : optional comma separated list of mailing list names to query
 * log : path filebeat will read files from
 
 ### Example filebeat.yml
