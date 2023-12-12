@@ -1,6 +1,6 @@
-# Shadowserver Reports in Comment Event Format
+# Shadowserver Reports in Common Event Format
 
-This is an CEF logging script for Shadowserver intelligence reports. 
+This is a CEF logging script for Shadowserver intelligence reports. 
 
 The script is designed to run from cron and will download and log all events from available reports that have not yet been processed.
 
@@ -24,7 +24,7 @@ $ python3 shadowserver_cef_logger.py config.ini update
 
 ```
 [general]
-state_directory=/var/lib/ecs/state
+state_directory=/var/lib/cef/state
 apikey = <your api key>
 secret = <your api secret>
 auto_update=true
