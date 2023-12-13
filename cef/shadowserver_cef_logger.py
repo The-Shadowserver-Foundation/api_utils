@@ -230,7 +230,7 @@ class ShadowserverCEFLogger:
             for row in reader:
                 count += 1
                 parts = []
-                parts.append("CEF:%s|Shadowserver|Reports|%s|%s|%s|%s|start:%s" %
+                parts.append("CEF:%s|Shadowserver|Reports|%s|%s|%s|%s|start=%s" %
                              (self.cef_version, self.device_version, device_id, report['type'],
                               cef_severity(row), row['timestamp'].replace(' ', 'T')))
                 for field in row:
@@ -238,7 +238,7 @@ class ShadowserverCEFLogger:
                     if value != "":
                         if field in mapping:
                             cef = mapping[field]
-                            parts.append("%s:%s" % (cef, value))
+                            parts.append("%s=%s" % (cef, value))
                             if re.match('^(c6a|cfp|cn|cs|deviceCustomDate|flexDate|flexString)\d$', cef):
                                 parts.append("%sLabel:%s" % (cef, field))
                 syslog.syslog(" ".join(parts))
