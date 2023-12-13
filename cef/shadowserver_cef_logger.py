@@ -237,6 +237,12 @@ class ShadowserverCEFLogger:
                     value = row[field]
                     if value != "":
                         if field in mapping:
+                            # escape special characters
+                            value = value.replace("\\", "\\\\")
+                            value = value.replace("\n", "\\n")
+                            value = value.replace("\r", "\\r")
+                            value = value.replace("=", "\\=");
+
                             cef = mapping[field]
                             parts.append("%s=%s" % (cef, value))
                             if re.match('^(c6a|cfp|cn|cs|deviceCustomDate|flexDate|flexString)\d$', cef):
