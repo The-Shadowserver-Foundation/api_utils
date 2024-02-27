@@ -41,7 +41,19 @@ The destination index may also be set after checking the _More settings_ box.
 Multiple instances of the Add-on can be created to partition events into different destinations by specifying _Reports_ and/or _Types_.
 
 
-## Manual run
+## Configuration Example
+
+Instances configured from the web interface are stored in an `inputs.conf` file.  The following is a sample configuration to import the [Device Identification Report](https://www.shadowserver.org/what-we-do/network-reporting/device-identification-report/):
+
+```
+[shadowserver_reports://device_id]
+api_key = ........-....-....-....-...........
+secret = ..........
+types = device_id
+disabled = 0
+```
+
+## Manual Run
 
 The add-on can be run manually as follows:
 
