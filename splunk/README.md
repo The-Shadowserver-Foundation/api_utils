@@ -60,3 +60,7 @@ The add-on can be run manually as follows:
 `(cd $SPLUNK_HOME;bin/splunk cmd splunkd print-modinput-config shadowserver_reports shadowserver_reports://device_id | bin/splunk cmd python etc/apps/shadowserver_reports/bin/shadowserver_reports.py)`
 
 Where `$SPLUNK_HOME` is the directory that Splunk has been installed and `shadowserver_reports://device_id` matches the name of the instance you want to run as configured in `$SPLUNK_HOME/var/run/splunk/confsnapshot/baseline_local/apps/shadowserver_reports/local/inputs.conf`.
+
+This will send the data stream that would be indexed to stdout.
+
+The list of report files processed can be seen in `$SPLUNK_HOME/var/lib/splunk/modinputs/shadowserver_reports`. The checkpoint files may be removed to re-import the given report.
