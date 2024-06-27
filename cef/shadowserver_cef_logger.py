@@ -27,7 +27,7 @@ import syslog
 import configparser
 import logging
 from urllib.request import urlopen, urlretrieve, Request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 MAPURL = 'https://interchange.shadowserver.org/cef/v1/map'
@@ -133,10 +133,9 @@ class ShadowserverCEFLogger:
         if self.mode != 'run':
             return
 
-        date = datetime.today().date()
-        daybefore = date - timedelta(2)
-        dayafter = date + timedelta(1)
-        date_str = f'{daybefore.isoformat()}:{dayafter.isoformat()}'
+        date = datetime.now(timezone.utc).date()
+        begin = date - timedelta(2)
+        date_str = f'{begin.isoformat()}:{date.isoformat()}'
 
         for input_name in self.config:
             input_item = self.config[input_name]
@@ -241,7 +240,7 @@ class ShadowserverCEFLogger:
                             value = value.replace("\\", "\\\\")
                             value = value.replace("\n", "\\n")
                             value = value.replace("\r", "\\r")
-                            value = value.replace("=", "\\=");
+                            value = value.replace("=", "\\=")
 
                             cef = mapping[field]
                             parts.append("%s=%s" % (cef, value))

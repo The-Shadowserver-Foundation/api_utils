@@ -28,7 +28,7 @@ import configparser
 import logging
 import ecs_logging
 from urllib.request import urlopen, urlretrieve, Request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 MAPURL = 'https://interchange.shadowserver.org/elasticsearch/v1/map'
@@ -141,10 +141,9 @@ class ShadowserverECSLogger:
         if self.mode != 'run':
             return
 
-        date = datetime.today().date()
-        daybefore = date - timedelta(2)
-        dayafter = date + timedelta(1)
-        date_str = f'{daybefore.isoformat()}:{dayafter.isoformat()}'
+        date = datetime.now(timezone.utc).date()
+        begin = date - timedelta(2)
+        date_str = f'{begin.isoformat()}:{date.isoformat()}'
 
         for input_name in self.config:
             input_item = self.config[input_name]
