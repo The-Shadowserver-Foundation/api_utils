@@ -119,6 +119,8 @@ class ShadowserverECSLogger:
         self.state_directory = self.config.get('general', 'state_directory')
         self.apikey = self.config.get('general', 'apikey')
         self.secret = self.config.get('general', 'secret')
+        self.logger = logging.getLogger('app')
+        self.logger.setLevel(logging.DEBUG)
 
         if not os.path.isdir(self.state_directory):
             raise ValueError('general.state_directory %r does not exist'
@@ -149,11 +151,9 @@ class ShadowserverECSLogger:
             input_item = self.config[input_name]
             if 'log' not in input_item:
                 continue
-            logger = logging.getLogger('app')
-            logger.setLevel(logging.DEBUG)
-            handler = logging.FileHandler(input_item['log'])
-            handler.setFormatter(ECSFormatter())
-            logger.addHandler(handler)
+            if not os.path.isdir(input_item['log']):
+                print("ERROR: log must be a directory for %r" % (input_name))
+                exit(1)
 
             types = None
             request = {'date': date_str}
@@ -178,7 +178,7 @@ class ShadowserverECSLogger:
                     path = os.path.join(dst, report['file'])
                     if not os.path.exists(path):
                         if self._download(report, path):
-                            self._stream_events(logger, report, path)
+                            self._stream_events(input_item['log'], report, path)
                             # truncate the file to conserve space
                             fh = open(path, 'a')
                             fh.truncate(0)
@@ -218,7 +218,7 @@ class ShadowserverECSLogger:
 
         return status
 
-    def _stream_events(self, logger, report, path):
+    def _stream_events(self, log, report, path):
         """
         Import events from the specified report.
 
@@ -226,6 +226,12 @@ class ShadowserverECSLogger:
         :param report: a dictonary
         :param path: string
         """
+    
+        logfile = os.path.join(log, re.sub('.csv$', '.json', os.path.basename(path)))
+        handler = logging.FileHandler(logfile)
+        handler.setFormatter(ECSFormatter())
+        self.logger.addHandler(handler)
+
         count = 0
         with open(path, newline='') as csvfile:
             reader = csv.DictReader(csvfile)
@@ -256,7 +262,9 @@ class ShadowserverECSLogger:
                             continue
                         event[mapped] = value
                 event['data_stream.dataset'] = report['type']
-                logger.info('', extra=event)
+                self.logger.info('', extra=event)
+
+        self.logger.removeHandler(handler)
         print("INFO: Processed %d events for %r" % (count, report['file']))
 
     def _api_call(self, method, request):

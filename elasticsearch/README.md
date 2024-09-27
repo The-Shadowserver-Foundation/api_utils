@@ -1,6 +1,7 @@
 # Shadowserver Reports for Elasticsearch
 
-This is an ECS logging script for Shadowserver intelligence reports.  This works with the [Filebeat](https://www.elastic.co/beats/filebeat) shipper.
+This is an ECS logging script for Shadowserver intelligence reports.  This works with the [Filebeat](https://www.elastic.co/beats/filebeat) shipper
+or a [Custom Logs integration](https://www.elastic.co/docs/current/integrations/log).
 
 The script is designed to run from cron and will download and log all events from available reports that have not yet been processed.
 
@@ -85,3 +86,12 @@ output.elasticsearch:
   password: "YvInisCyhKtwpCkFY2F+"
 
 ```
+
+### Custom Logs integration
+
+Select _Change defaults_ and _Advanced options_ to fine tune the integration.
+
+The `drop_fields`  settings from the filebeat example can be entered in the _Processors_ area.
+
+The top level `json` settings from the filebeat example can be entered in the _Custom configurations_ area.
+
