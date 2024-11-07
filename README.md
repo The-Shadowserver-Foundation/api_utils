@@ -17,7 +17,7 @@ uri = https://transform.shadowserver.org/api2/
 If an error like this occurs, it means that the query is going through a lot of data and the timeout in the program should be increased:
 
 ```
-freed0@pit:~$ ./call-api.py reports/query '{"report":"united-states", "date":"2020-10-27", "query":{"city":"ashburn"}, "limit":3}' pretty
+$ ./call-api.py reports/query '{"report":"united-states", "date":"2020-10-27", "query":{"city":"ashburn"}, "limit":3}' pretty
 API Exception: The read operation timed out
 ```
 
@@ -73,6 +73,8 @@ Settings:
  - min_disk_free : minimum disk free in MB to attempt download (default 512)
  - notifier      : specify a notification queue type [none, stomp, redis, or kafka]
  - url_prefix    : URL prefix replacement for the top level directory for notification messages
+ - reports       : optional list of mailing list names you want to filter by
+ - type          : optional report type to filter by
 
 If a 'notifier' is configured in the [reports] section, an additional section with a matching
 name is required.

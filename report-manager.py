@@ -43,6 +43,8 @@ Settings:
   min_disk_free : minimum disk free in MB to attempt download (default 512)
   notifier      : specify a notification queue type [none, stomp, redis, or kafka]
   url_prefix    : URL prefix replacement for the top level directory for notification messages
+  reports       : optional list of mailing list names you want to filter by
+  type          : optional report type to filter by
 
 If a 'notifier' is configured in the [reports] section, an additional section with a matching
 name is required.
@@ -138,6 +140,8 @@ class ReportManager:
         self.basedir = config.get('reports', 'directory')
         self.threshold = int(config.get('reports', 'min_disk_free', fallback=512)) * 1024 * 1024
         self.url_prefix = config.get('reports', 'url_prefix', fallback=None)
+        self.reports = config.get('reports', 'reports', fallback=None)
+        self.type = config.get('reports', 'type', fallback=None)
         self.count = 0
 
         mkdir(self.basedir)
@@ -234,8 +238,14 @@ class ReportManager:
             mkdir(directory)
 
         # obtain report list
+        query = { 'date':date }
+        if self.reports is not None:
+            query['reports'] = self.reports.split(',')
+        if self.type is not None:
+            query['type'] = self.type
+
         try:
-            result = api.api_call('reports/list', { 'date':date })
+            result = api.api_call('reports/list', query)
         except Exception as e:
             die("API Exception: " + format(e))
         try:
