@@ -53,32 +53,67 @@ Each additional section defines one or more report directives.
 ```
 filebeat.inputs:
 
-- type: log
-  enabled: true
-  paths:
-    - /var/lib/ecs/filebeat/*.json
-  json.keys_under_root: true
-  json.overwrite_keys: true
-  json.add_error_key: true
-  json.expand_keys: true
-  publisher_pipeline.disable_host: true
+  - type: log
+    id: shadowserver-feeds
+    enabled: true
+    paths:
+      - /var/lib/ecs/filebeat/*.json
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    json.expand_keys: true
+    publisher_pipeline.disable_host: true
+    harvester_limit: 8
+    scan_frequency: 1m
+    close_inactive: 5m
+    ignore_older: 24h
+    clean_inactive: 25h
 
 processors:
   - drop_fields:
-       fields: ["agent.ephemeral_id", "agent.hostname", "agent.name", "agent.id", "agent.type", "agent.version", "ecs.version", "input.type", "process.name", "process.pid", "process.thread.id", "process.thread.name", "log.original", "log.offset", "log.level", "log.origin.function", "log.origin.file.name", "log.origin.file.line", "log.logger", "log.file.path"]
+      when:
+        equals:
+          input.type: "log"
+      fields:
+        - "agent.ephemeral_id"
+        - "agent.hostname"
+        - "agent.name"
+        - "agent.id"
+        - "agent.type"
+        - "agent.version"
+        - "ecs.version"
+        - "input.type"
+        - "process.name"
+        - "process.pid"
+        - "process.thread.id"
+        - "process.thread.name"
+        - "log.original"
+        - "log.offset"
+        - "log.level"
+        - "log.origin.function"
+        - "log.origin.file.name"
+        - "log.origin.file.line"
+        - "log.logger"
+        - "log.file.path"
 
 setup.template.settings:
   index.number_of_shards: 1
-  #index.codec: best_compression
-  #_source.enabled: false
+
+setup.template:
+  name: "filebeat"
+  pattern: "filebeat"
+
+setup.kibana:
+  host: "http://127.0.0.1:5601"
+  ssl.verification_mode: none
 
 output.elasticsearch:
   # Array of hosts to connect to.
-  hosts: ["localhost:9200"]
+  hosts: ["https://127.0.0.1:9200"]
+  ssl.certificate_authorities: ["/opt/elasticsearch/config/certs/http_ca.crt"]
 
-  # Protocol - either `http` (default) or `https`.
-  protocol: "https"
-  ssl.certificate_authorities: ["/opt/elasticsearch-8.9.2/config/certs/http_ca.crt"]
+  # Index by report type and month
+  index: "shadowserver-%{[data_stream.dataset]}-%{+yyyy-MM}"
 
   # Authentication credentials - either API key or username/password.
   #api_key: "beats:OXlsZmQ0b0JnLUTPwjbKCtrtRG06R2tXaUdxdmdURTJLa0Ytdk1Ya1pXdw=="
@@ -86,6 +121,9 @@ output.elasticsearch:
   password: "YvInisCyhKtwpCkFY2F+"
 
 ```
+
+As a default, filebeat will add all new fields it encounters to the index mapping.  Please coordinate with your Elastic administrator to determine how the data should be indexed for your organization.
+
 
 ### Custom Logs integration
 
