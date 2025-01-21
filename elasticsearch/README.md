@@ -3,7 +3,7 @@
 This is an ECS logging script for Shadowserver intelligence reports.  This works with the [Filebeat](https://www.elastic.co/beats/filebeat) shipper
 or a [Custom Logs integration](https://www.elastic.co/docs/current/integrations/log).
 
-The script is designed to run from cron and will download and log all events from available reports that have not yet been processed.
+The script is designed to run from cron (e.g. daily) and will download and log all events from available reports that have not yet been processed.
 
 The `shadowserver_ecs_logger.py` script is run with the path to the config file:
 
@@ -47,6 +47,9 @@ Each additional section defines one or more report directives.
 * types : optional comma separated list of report types to download
 * reports : optional comma separated list of mailing list names to query
 * log : path filebeat will read files from
+
+> The `state_directory` and `log` paths must exist and be writeable by the user setup to run the shadowserver_ecs_logger.py script as well as Filebeat or Elastic depending on your integration method.
+
 
 ### Example filebeat.yml
 
@@ -129,7 +132,41 @@ As a default, filebeat will add all new fields it encounters to the index mappin
 
 Select _Change defaults_ and _Advanced options_ to fine tune the integration.
 
-The `drop_fields`  settings from the filebeat example can be entered in the _Processors_ area.
+The `drop_fields` settings from the filebeat example can be entered in the _Processors_ area.
+
+```
+  - drop_fields:
+      when:
+        equals:
+          input.type: "log"
+      fields:
+        - "agent.ephemeral_id"
+        - "agent.hostname"
+        - "agent.name"
+        - "agent.id"
+        - "agent.type"
+        - "agent.version"
+        - "ecs.version"
+        - "input.type"
+        - "process.name"
+        - "process.pid"
+        - "process.thread.id"
+        - "process.thread.name"
+        - "log.original"
+        - "log.offset"
+        - "log.level"
+        - "log.origin.function"
+        - "log.origin.file.name"
+        - "log.origin.file.line"
+        - "log.logger"
+        - "log.file.path"
+```
 
 The top level `json` settings from the filebeat example can be entered in the _Custom configurations_ area.
 
+```
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    json.expand_keys: true
+```
