@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright 2023 The Shadowserver Foundation, Inc.
+# Copyright 2023-2025 The Shadowserver Foundation, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"): you may
 # not use this file except in compliance with the License. You may obtain
@@ -29,7 +29,7 @@ import logging
 import ecs_logging
 from urllib.request import urlopen, urlretrieve, Request
 from datetime import datetime, timedelta, timezone
-
+import dateutil.parser
 
 MAPURL = 'https://interchange.shadowserver.org/elasticsearch/v1/map'
 APIROOT = 'https://transform.shadowserver.org/api2/'
@@ -76,6 +76,26 @@ def set_labels(event, field, value, args):
     except Exception:
         pass
 
+def convert_timestamp(event, field, value, args):
+    """
+    Convert timestamp to isoformat.
+
+    param event: An event dictionary
+    param field: The source field name
+    param value: The source field value
+    param args:  A list of field(s) to set
+    """
+    try:
+        date = dateutil.parser.parse(value, fuzzy=True)
+        if not date.tzinfo:
+            date = date.replace(tzinfo=timezone.utc)
+        else:
+            date = date.astimezone(timezone.utc)
+        value = date.isoformat()
+        for arg in args:
+            event[arg] = value
+    except Exception as e:
+        pass
 
 class ECSFormatter(ecs_logging.StdlibFormatter):
     """
@@ -97,6 +117,7 @@ class ShadowserverECSLogger:
             'timestamp': set_timestamp,
             'labels': set_labels,
             'tags': set_tags,
+            'convert_timestamp': convert_timestamp,
     }
     map_filename = 'map.json'
 
@@ -312,7 +333,8 @@ class ShadowserverECSLogger:
                 status = True
         except Exception as e:
             print("ERROR: Download failed: %s" % (str(e)))
-            os.unlink(path)
+            if os.path.exists(path):
+                os.unlink(path)
         return status
 
 
