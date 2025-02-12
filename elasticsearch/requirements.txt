@@ -1,2 +1,2 @@
-ecs-logging==2.1.0
-dateutil==2.9.0
+ecs_logging==2.2.0
+python_dateutil==2.9.0
