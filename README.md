@@ -75,6 +75,7 @@ Settings:
  - url_prefix    : URL prefix replacement for the top level directory for notification messages
  - reports       : optional list of mailing list names you want to filter by
  - type          : optional report type to filter by
+ - exclude       : optional comma separated list of report types to exclude
 
 If a 'notifier' is configured in the [reports] section, an additional section with a matching
 name is required.

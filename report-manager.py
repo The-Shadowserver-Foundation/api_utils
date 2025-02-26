@@ -45,6 +45,7 @@ Settings:
   url_prefix    : URL prefix replacement for the top level directory for notification messages
   reports       : optional list of mailing list names you want to filter by
   type          : optional report type to filter by
+  exclude       : optional comma separated list of report types to exclude
 
 If a 'notifier' is configured in the [reports] section, an additional section with a matching
 name is required.
@@ -142,6 +143,10 @@ class ReportManager:
         self.url_prefix = config.get('reports', 'url_prefix', fallback=None)
         self.reports = config.get('reports', 'reports', fallback=None)
         self.type = config.get('reports', 'type', fallback=None)
+        self.exclude = []
+        exclude = config.get('reports', 'exclude', fallback=None)
+        if not exclude is None:
+            self.exclude = exclude.split(',')
         self.count = 0
 
         mkdir(self.basedir)
@@ -258,7 +263,8 @@ class ReportManager:
             status = list(shutil.disk_usage(directory))
             if status[2] < self.threshold:
                 die("Exception: insufficient disk space")
-            self._download(report, directory)
+            if not report['type'] in self.exclude:
+                self._download(report, directory)
 
 def die(message):
     """Log and exit with a message."
