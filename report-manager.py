@@ -43,8 +43,9 @@ Settings:
   min_disk_free : minimum disk free in MB to attempt download (default 512)
   notifier      : specify a notification queue type [none, stomp, redis, or kafka]
   url_prefix    : URL prefix replacement for the top level directory for notification messages
-  reports       : optional list of mailing list names you want to filter by
-  type          : optional report type to filter by
+  reports       : optional comma separated list of mailing list names you want to filter by
+  types         : optional list of report types to filter by
+  type          : optional report type to filter by (deprecated)
   exclude       : optional comma separated list of report types to exclude
 
 If a 'notifier' is configured in the [reports] section, an additional section with a matching
@@ -142,12 +143,17 @@ class ReportManager:
         self.threshold = int(config.get('reports', 'min_disk_free', fallback=512)) * 1024 * 1024
         self.url_prefix = config.get('reports', 'url_prefix', fallback=None)
         self.reports = config.get('reports', 'reports', fallback=None)
-        self.type = config.get('reports', 'type', fallback=None)
+        self.types = []
         self.exclude = []
         exclude = config.get('reports', 'exclude', fallback=None)
         if not exclude is None:
             self.exclude = exclude.split(',')
         self.count = 0
+
+        for k in ['type', 'types']:
+            v = config.get('reports', k, fallback=None)
+            if not v is None:
+                self.types.extend(v.split(','))
 
         mkdir(self.basedir)
 
@@ -246,8 +252,8 @@ class ReportManager:
         query = { 'date':date }
         if self.reports is not None:
             query['reports'] = self.reports.split(',')
-        if self.type is not None:
-            query['type'] = self.type
+        if len(self.types):
+            query['types'] = self.types
 
         try:
             result = api.api_call('reports/list', query)

@@ -73,8 +73,8 @@ Settings:
  - min_disk_free : minimum disk free in MB to attempt download (default 512)
  - notifier      : specify a notification queue type [none, stomp, redis, or kafka]
  - url_prefix    : URL prefix replacement for the top level directory for notification messages
- - reports       : optional list of mailing list names you want to filter by
- - type          : optional report type to filter by
+ - reports       : optional comma separated list of mailing list names you want to filter by
+ - types         : optional comma separated list of report types to filter by 
  - exclude       : optional comma separated list of report types to exclude
 
 If a 'notifier' is configured in the [reports] section, an additional section with a matching
