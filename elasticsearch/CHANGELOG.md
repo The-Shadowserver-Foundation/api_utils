@@ -1,7 +1,13 @@
+### 2025-12-04
+
+Refactored to use Redis and Logstash. Tested with Elastic 9.2.2.
+
+
 ### 2025-02-11
 
 Update for issue #13:
  * added convert_timestamp function.
+
 
 ### 2024-09-27
 

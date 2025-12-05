@@ -1,7 +1,6 @@
 # Shadowserver Reports for Elasticsearch
 
-This is an ECS logging script for Shadowserver intelligence reports.  This works with the [Filebeat](https://www.elastic.co/beats/filebeat) shipper
-or a [Custom Logs integration](https://www.elastic.co/docs/current/integrations/log).
+This is an ECS logging script for Shadowserver intelligence reports.  This script uses [Redis](https://redis.io/) to queue events for [Logstash](https://www.elastic.co/logstash).
 
 The script is designed to run from cron (e.g. daily) and will download and log all events from available reports that have not yet been processed.
 
@@ -24,149 +23,99 @@ $ python3 shadowserver_ecs_logger.py config.ini update
 ### Example config.ini:
 
 ```
-[general]
-state_directory=/var/lib/ecs/state
-apikey = <your api key>
-secret = <your api secret>
+[api]
+key = c6603b1b-ed7f-4dc8-a47f-b45cae9d1a
+secret = pp2be1XZmBp
 auto_update=true
 
-[device_id]
-types=device_id
-log=/var/lib/ecs/filebeat
+[state]
+directory=/var/lib/ecs/state
+
+[redis]
+host=127.0.0.1
+port=6379
+queue=shadowserver-queue
 ```
 
-The _general_ section contains settings common to all download groups.
+The _api_ section contains settings to fetch the reports.
 
-* state_directory : path used to store report and mapping details
-* apikey : your Shadowserver API key
-* secret : your Shadowserver API secret
+* key : your Shadowserver API key (required)
+* secret : your Shadowserver API secret (required)
 * auto_update : optional boolean flag to download the latest mapping at startup
-
-Each additional section defines one or more report directives.
-
 * types : optional comma separated list of report types to download
 * reports : optional comma separated list of mailing list names to query
-* log : path filebeat will read files from
+* days : optional number of days to query for reports (default `2`)
 
-> The `state_directory` and `log` paths must exist and be writeable by the user setup to run the shadowserver_ecs_logger.py script as well as Filebeat or Elastic depending on your integration method.
+The _state_ section contains settings for maintaining state.
+
+* directory : path used to store report and mapping details (required)
+
+The _redis_ section contains settings for Redis.
+
+* host : host or IP address (default `127.0.0.1`)
+* port : port (default `6379`)
+* db : db number (default `0`)
+* password : optional password string
+* timeout : write timeout in ms (default `5000`)
+* queue : queue name (default `shadowserver-queue`)
 
 
-### Example filebeat.yml
+### Example Logstash setup:
+
+This example presumes that elasticsearch, logstash, and redis are on the same host.  Individual settings will need to be tailored to your environment.
+
+as elastic:
 
 ```
-filebeat.inputs:
+  cd /opt/logstash
+  mv config/pipelines.yml config/pipelines.yml.orig
+  echo '- pipeline.id: shadowserver' >> config/pipelines.yml
+  echo '  path.config: "/opt/logstash/config/shadowserver.conf"' >> config/pipelines.yml
+```
 
-  - type: log
-    id: shadowserver-feeds
-    enabled: true
-    paths:
-      - /var/lib/ecs/filebeat/*.json
-    json.keys_under_root: true
-    json.overwrite_keys: true
-    json.add_error_key: true
-    json.expand_keys: true
-    publisher_pipeline.disable_host: true
-    harvester_limit: 8
-    scan_frequency: 1m
-    close_inactive: 5m
-    ignore_older: 24h
-    clean_inactive: 25h
+copy to config/shadowserver.conf:
 
-processors:
-  - drop_fields:
-      when:
-        equals:
-          input.type: "log"
-      fields:
-        - "agent.ephemeral_id"
-        - "agent.hostname"
-        - "agent.name"
-        - "agent.id"
-        - "agent.type"
-        - "agent.version"
-        - "ecs.version"
-        - "input.type"
-        - "process.name"
-        - "process.pid"
-        - "process.thread.id"
-        - "process.thread.name"
-        - "log.original"
-        - "log.offset"
-        - "log.level"
-        - "log.origin.function"
-        - "log.origin.file.name"
-        - "log.origin.file.line"
-        - "log.logger"
-        - "log.file.path"
+```
+input {
+  redis {
+    host => "127.0.0.1"
+    port => 6379
+    db => 0
+    data_type => "list"
+    key => "shadowserver-queue"
+  }
+}
 
-setup.template.settings:
-  index.number_of_shards: 1
+filter {
+  mutate {
+    remove_field => ["__type", "@version", "event"]
+  }
+  fingerprint {
+    source => ["log.origin.file.name", "log.origin.file.line"]
+    target => "[@metadata][fingerprint]"
+    method => "MURMUR3"
+    concatenate_sources => true
+  }
+}
 
-setup.template:
-  name: "filebeat"
-  pattern: "filebeat"
-
-setup.kibana:
-  host: "http://127.0.0.1:5601"
-  ssl.verification_mode: none
-
-output.elasticsearch:
-  # Array of hosts to connect to.
-  hosts: ["https://127.0.0.1:9200"]
-  ssl.certificate_authorities: ["/opt/elasticsearch/config/certs/http_ca.crt"]
-
-  # Index by report type and month
-  index: "shadowserver-%{[data_stream.dataset]}-%{+yyyy-MM}"
-
-  # Authentication credentials - either API key or username/password.
-  #api_key: "beats:OXlsZmQ0b0JnLUTPwjbKCtrtRG06R2tXaUdxdmdURTJLa0Ytdk1Ya1pXdw=="
-  username: "elastic"
-  password: "YvInisCyhKtwpCkFY2F+"
+output {
+  elasticsearch {
+    hosts => ["https://127.0.0.1:9200"]
+    ssl_certificate_authorities => ["/opt/elasticsearch/config/certs/http_ca.crt"]
+    index => "ecs-logstash-shadowserver-%{+YYYY.MM}"
+    user => "elastic"
+    password => "NmxDKvM0+efWHRVqiPW6"
+    document_id => "%{[@metadata][fingerprint]}"
+  }
+}
 
 ```
 
-As a default, filebeat will add all new fields it encounters to the index mapping.  Please coordinate with your Elastic administrator to determine how the data should be indexed for your organization.
+The _fingerprint_ filter is used to de-duplicate events streamed to Elasticsearch.
 
+The _ecs-logstash-_ index prefix is needed so that the built-in _ecs-logstash_ index template is utilized.  Without the template events will likely be skipped due to an exception:
 
-### Custom Logs integration
+> Limit of total fields [1000] has been exceeded while adding new fields
 
-Select _Change defaults_ and _Advanced options_ to fine tune the integration.
+To further limit the number of fields indexed, the **extra** fields can be excluded from search by cloning the _ecs-logstash_ template with a new name (_ecs-shadowserver_) and matching pattern (_ecs-shadowserver-*_) with **extra** added as an object with search disabled.
 
-The `drop_fields` settings from the filebeat example can be entered in the _Processors_ area.
-
-```
-  - drop_fields:
-      when:
-        equals:
-          input.type: "log"
-      fields:
-        - "agent.ephemeral_id"
-        - "agent.hostname"
-        - "agent.name"
-        - "agent.id"
-        - "agent.type"
-        - "agent.version"
-        - "ecs.version"
-        - "input.type"
-        - "process.name"
-        - "process.pid"
-        - "process.thread.id"
-        - "process.thread.name"
-        - "log.original"
-        - "log.offset"
-        - "log.level"
-        - "log.origin.function"
-        - "log.origin.file.name"
-        - "log.origin.file.line"
-        - "log.logger"
-        - "log.file.path"
-```
-
-The top level `json` settings from the filebeat example can be entered in the _Custom configurations_ area.
-
-```
-    json.keys_under_root: true
-    json.overwrite_keys: true
-    json.add_error_key: true
-    json.expand_keys: true
-```

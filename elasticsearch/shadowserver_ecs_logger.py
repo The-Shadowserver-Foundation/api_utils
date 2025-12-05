@@ -30,13 +30,15 @@ import ecs_logging
 from urllib.request import urlopen, urlretrieve, Request
 from datetime import datetime, timedelta, timezone
 import dateutil.parser
+import redis
+import signal
 
-MAPURL = 'https://interchange.shadowserver.org/elasticsearch/v1/map'
-APIROOT = 'https://transform.shadowserver.org/api2/'
-DLROOT = 'https://dl.shadowserver.org/'
-TIMEOUT = 45
-MAX_AGE = 86400 * 7  # 7 days
+__unlink_on_signal = None
 
+def signal_handler(signum, frame):
+    if __unlink_on_signal is not None:
+        os.unlink(__unlink_on_signal)
+    sys.exit(1)
 
 def set_timestamp(event, field, value):
     """
@@ -97,22 +99,23 @@ def convert_timestamp(event, field, value, args):
     except Exception as e:
         pass
 
-class ECSFormatter(ecs_logging.StdlibFormatter):
-    """
-    Work-around for "Type mismatch at key `@timestamp`: merging dicts".
-    """
-
-    def format_to_ecs(self, record):
-        result = super().format_to_ecs(record)
-        del result['message']  # remove empty element
-        result['@timestamp'] = result.pop('timestamp')
-        return result
-
 
 class ShadowserverECSLogger:
     """
     Connects to the Shadowserver API to obtain and stream reported events.
     """
+    map_url = 'https://interchange.shadowserver.org/elasticsearch/v1/map'
+    api_root = 'https://transform.shadowserver.org/api2/'
+    dl_root = 'https://dl.shadowserver.org/'
+    timeout = 45
+    days = 2
+    redis_host = '127.0.0.1'
+    redis_port = 6379
+    redis_db = 0
+    redis_password = None
+    redis_timeout = 5000
+    redis_queue = 'shadowserver-queue'
+
     functions = {
             'timestamp': set_timestamp,
             'labels': set_labels,
@@ -137,81 +140,78 @@ class ShadowserverECSLogger:
         self.config = configparser.ConfigParser()
         self.config.read(args[1])
 
-        self.state_directory = self.config.get('general', 'state_directory')
-        self.apikey = self.config.get('general', 'apikey')
-        self.secret = self.config.get('general', 'secret')
+        self.state_directory = self.config.get('state', 'directory')
+        self.apikey = self.config.get('api', 'key')
+        self.secret = self.config.get('api', 'secret')
+        self.days = int(self.config.get('api', 'days', fallback=self.days))
+        self.redis_host = self.config.get('redis', 'host', fallback=self.redis_host)
+        self.redis_port = int(self.config.get('redis', 'port', fallback=self.redis_port))
+        self.redis_db = int(self.config.get('redis', 'db', fallback=self.redis_db))
+        self.redis_queue = self.config.get('redis', 'queue', fallback=self.redis_queue)
+        self.redis_password = self.config.get('redis', 'password', fallback=self.redis_password)
+        self.max_age = 86400 * (self.days + 5)
         self.logger = logging.getLogger('app')
         self.logger.setLevel(logging.DEBUG)
+        self.output = None
 
         if not os.path.isdir(self.state_directory):
-            raise ValueError('general.state_directory %r does not exist'
-                             % (self.state_directory))
+            raise ValueError('state.directory %r does not exist' % (self.state_directory))
 
-        if self.config.getboolean('general', 'auto_update'):
+        if self.config.getboolean('api', 'auto_update') or self.mode == 'update':
             self.update()
+
+        self.conn = redis.ConnectionPool(host=self.redis_host, port=self.redis_port, db=self.redis_db, password=self.redis_password)
+        self._connect(False) 
+
+
+    def run(self):
+        """
+        Stream all available events from reports not yet imported.
+        """
+        if self.mode != 'run':
+            return
 
         map_path = os.path.join(self.state_directory, self.map_filename)
         with open(map_path) as fh:
             self.mapping = json.load(fh)
 
-    def run(self):
-        """
-        Stream all available events from reports not yet imported.
-
-        :param inputs: an InputDefinition object
-        :param event_writer: an EventWriter object
-        """
-        if self.mode != 'run':
-            return
-
         date = datetime.now(timezone.utc).date()
-        begin = date - timedelta(2)
+        begin = date - timedelta(self.days)
         date_str = f'{begin.isoformat()}:{date.isoformat()}'
 
-        for input_name in self.config:
-            input_item = self.config[input_name]
-            if 'log' not in input_item:
-                continue
-            if not os.path.isdir(input_item['log']):
-                print("ERROR: log must be a directory for %r" % (input_name))
-                exit(1)
+        types = None
+        request = {'date': date_str}
+        if self.config.has_option('api', 'reports'):
+            request['reports'] = self.config.get('api', 'reports').split(',')
+        if self.config.has_option('api', 'types'):
+            types = self.config.get('api', 'types').split(',')
 
-            types = None
-            request = {'date': date_str}
-            if 'reports' in input_item:
-                request['reports'] = input_item['reports'].split(',')
-            if 'types' in input_item:
-                types = input_item['types'].split(',')
+        dst = os.path.join(self.state_directory, 'reports')
+        if not os.path.isdir(dst):
+            os.mkdir(dst)
 
-            # prepare input specific checkpoint directory
-            name = os.path.basename(input_name)
-            dst = os.path.join(self.state_directory, name)
-            if not os.path.isdir(dst):
-                os.mkdir(dst)
+        # locate new reports
+        global __unlink_on_signal
+        reports = self._api_call('reports/list', request)
+        if reports is not None:
+            for report in reports:
+                if types is not None:
+                    if report['type'] not in types:
+                        continue
+                path = os.path.join(dst, report['file'])
+                if not os.path.exists(path):
+                    if self._download(report, path):
+                        __unlink_on_signal = path
+                        self._stream_events(report, path)
+                        __unlink_on_signal = None
 
-            # locate new reports
-            reports = self._api_call('reports/list', request)
-            if reports is not None:
-                for report in reports:
-                    if types is not None:
-                        if report['type'] not in types:
-                            continue
-                    path = os.path.join(dst, report['file'])
-                    if not os.path.exists(path):
-                        if self._download(report, path):
-                            self._stream_events(input_item['log'], report, path)
-                            # truncate the file to conserve space
-                            fh = open(path, 'a')
-                            fh.truncate(0)
-                            fh.close()
-
-            # expire old files
-            for file in os.listdir(dst):
-                path = os.path.join(dst, file)
-                if os.path.isfile(path):
-                    fstat = os.stat(path)
-                    if time.time()-fstat.st_mtime > MAX_AGE:
-                        os.unlink(path)
+        # expire old files
+        for file in os.listdir(dst):
+            path = os.path.join(dst, file)
+            if os.path.isfile(path):
+                fstat = os.stat(path)
+                if time.time()-fstat.st_mtime > self.max_age:
+                    os.unlink(path)
 
     def update(self):
         """
@@ -222,7 +222,7 @@ class ShadowserverECSLogger:
 
         status = False
         try:
-            urlretrieve(MAPURL, map_tmp)
+            urlretrieve(self.map_url, map_tmp)
             if os.path.getsize(map_tmp) > 0:
                 with open(map_tmp) as fh:
                     mapping = json.load(fh)
@@ -239,20 +239,13 @@ class ShadowserverECSLogger:
 
         return status
 
-    def _stream_events(self, log, report, path):
+    def _stream_events(self, report, path):
         """
         Import events from the specified report.
 
-        :param logger: a Logger object
         :param report: a dictonary
         :param path: string
         """
-    
-        logfile = os.path.join(log, re.sub('.csv$', '.json', os.path.basename(path)))
-        handler = logging.FileHandler(logfile)
-        handler.setFormatter(ECSFormatter())
-        self.logger.addHandler(handler)
-
         count = 0
         with open(path, newline='') as csvfile:
             reader = csv.DictReader(csvfile)
@@ -282,10 +275,24 @@ class ShadowserverECSLogger:
                                 self.functions[func](event, field, value)
                             continue
                         event[mapped] = value
-                event['data_stream.dataset'] = report['type']
-                self.logger.info('', extra=event)
+                event['log.logger'] = report['type']
+                event['log.origin.file.name'] = report['file']
+                event['log.origin.file.line'] = count
+                event['@timestamp'] = event.pop('timestamp')
+                try:
+                    msg = json.dumps(event, sort_keys=True)
+                except Exception:
+                    self.logger.exception('Failed to encode event for %s:%d' % (report['file'], count))
+                else:
+                    sent = False
+                    while not sent:
+                        try:
+                            self.output.lpush(self.redis_queue, msg)
+                            sent = True
+                        except Exception:
+                            self.logger.exception('Failed to send message. Reconnecting.')
+                            self._connect(True)
 
-        self.logger.removeHandler(handler)
         print("INFO: Processed %d events for %r" % (count, report['file']))
 
     def _api_call(self, method, request):
@@ -295,7 +302,7 @@ class ShadowserverECSLogger:
         :param method: string
         :param request: dictionary
         """
-        url = APIROOT + method
+        url = self.api_root + method
 
         request['apikey'] = self.apikey
         request_string = json.dumps(request)
@@ -310,7 +317,7 @@ class ShadowserverECSLogger:
         response = None
         try:
             ua_request = Request(url, data=request_bytes, headers={'HMAC2': hmac2})
-            response = urlopen(ua_request, timeout=TIMEOUT)
+            response = urlopen(ua_request, timeout=self.timeout)
         except Exception as e:
             raise ValueException("API Exception %" % format(e))
         try:
@@ -328,7 +335,7 @@ class ShadowserverECSLogger:
         """
         status = False
         try:
-            urlretrieve(DLROOT + report['id'], path)
+            urlretrieve(self.dl_root + report['id'], path)
             if os.path.getsize(path) > 0:
                 status = True
         except Exception as e:
@@ -337,6 +344,26 @@ class ShadowserverECSLogger:
                 os.unlink(path)
         return status
 
+    def _connect(self, retry):
+        """
+        Obtains a connection to Redis
+        """
+        connected = False
+        while not connected:
+            try:
+                self.output = redis.Redis(connection_pool=self.conn, socket_timeout=self.redis_timeout, password=self.redis_password)
+                info = self.output.info()
+            except redis.ConnectionError:
+                if not retry:
+                    raise ValueError("Redis connection to %s:%s failed!" % (self.redis_host, self.redis_port))
+                time.sleep(20)
+            else:
+                self.logger.info("Connected successfully to Redis %s at %s:%s!",
+                    info['redis_version'], self.redis_host, self.redis_port)
+                connected = True
+        return self.output
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     sys.exit(ShadowserverECSLogger(sys.argv).run())
