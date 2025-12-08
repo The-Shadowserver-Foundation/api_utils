@@ -78,10 +78,10 @@ Example crontab to check for new reports once per hour:
 import os
 import sys
 import json
-import syslog
 import configparser
 import importlib
 import shutil
+import logging
 from datetime import datetime, timedelta, timezone
 from urllib.request import urlretrieve, urljoin, pathname2url
 api = importlib.import_module('call-api')
@@ -184,7 +184,7 @@ class ReportManager:
         for i in reversed(range(1,days+1)):
             dt = datetime.now(timezone.utc) - timedelta(days=i)
             self._sync(dt.strftime("%Y-%m-%d"))
-        syslog.syslog(F"Completed - {self.count} reports downloaded")
+        logger.info(F"Completed - {self.count} reports downloaded")
 
     def _notify(self, report, filename):
         """Send a notification message.
@@ -231,7 +231,7 @@ class ReportManager:
                     if not self.notifier is None:
                         self._notify(report, dst)
             except Exception as e:
-                syslog.syslog("Exception: unable to download {} - {}".format(report['file'], format(e)))
+                logger.error("Exception: unable to download {} - {}".format(report['file'], format(e)))
 
     def _sync(self, date):
         """Store reports in a tree structure (year/month/day).
@@ -281,7 +281,7 @@ def die(message):
     Returns:
         nothing
     """
-    syslog.syslog(message)
+    logger.error(message)
     sys.exit(message)
 
 def mkdir(path):
@@ -310,7 +310,12 @@ if __name__ == '__main__':
         else:
             days = 2
 
-        syslog.openlog("report_manager.py " + os.path.basename(sys.argv[1]))
+        if os.path.exists('logging.conf'):
+            logging.config.fileConfig('logging.conf')
+        else:
+            logging.basicConfig(level=logging.INFO)
+        global logger
+        logger = logging.getLogger('report-manager')
         manager = ReportManager(sys.argv[1])
         manager.run(days)
 
